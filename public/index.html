@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Todo（API接続）</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 600px;
+        margin: 40px auto;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      input {
+        flex: 1;
+        padding: 8px;
+      }
+      li {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 6px 0;
+      }
+      li.done .title {
+        text-decoration: line-through;
+        color: #888;
+      }
+      button {
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Todo（API接続）</h1>
+    <div class="row">
+      <input id="newTodo" placeholder="やることを入力" />
+      <button id="addBtn" type="button">追加</button>
+    </div>
+    <ul id="list"></ul>
+
+    <script>
+      // 変更前: const ORIGIN = "http://localhost:3000";
+      const ORIGIN = window.location.origin;
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const listEl = document.getElementById("list");
+        const inputEl = document.getElementById("newTodo");
+        const addBtn = document.getElementById("addBtn");
+
+        async function fetchJSON(url, opts) {
+          const res = await fetch(url, opts);
+          return {
+            ok: res.ok,
+            status: res.status,
+            json: res.ok ? await res.json().catch(() => null) : null,
+            res,
+          };
+        }
+
+        async function fetchTodos() {
+          const { json } = await fetchJSON(`${ORIGIN}/api/todos`);
+          return json || [];
+        }
+
+        async function addTodo(title) {
+          const { ok, status, res } = await fetchJSON(`${ORIGIN}/api/todos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title }),
+          });
+          if (!ok)
+            throw new Error((await res.text()) || `POST failed ${status}`);
+        }
+
+        async function toggleDone(id, done) {
+          const { ok, status, res } = await fetchJSON(
+            `${ORIGIN}/api/todos/${id}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ done }),
+            }
+          );
+          if (!ok)
+            throw new Error((await res.text()) || `PATCH failed ${status}`);
+        }
+
+        async function removeTodo(id) {
+          const { ok, status, res } = await fetchJSON(
+            `${ORIGIN}/api/todos/${id}`,
+            { method: "DELETE" }
+          );
+          if (!ok)
+            throw new Error((await res.text()) || `DELETE failed ${status}`);
+        }
+
+        function setBusy(b) {
+          addBtn.disabled = b;
+          addBtn.textContent = b ? "追加中…" : "追加";
+        }
+
+        async function render() {
+          const todos = await fetchTodos();
+          listEl.innerHTML = "";
+          for (const t of todos) {
+            const li = document.createElement("li");
+            if (t.done) li.classList.add("done");
+
+            const chk = document.createElement("input");
+            chk.type = "checkbox";
+            chk.checked = t.done;
+            chk.onchange = async () => {
+              try {
+                await toggleDone(t.id, chk.checked);
+                await render();
+              } catch (e) {
+                alert("更新に失敗しました");
+                chk.checked = !chk.checked;
+              }
+            };
+
+            const span = document.createElement("span");
+            span.className = "title";
+            span.textContent = t.title;
+
+            const del = document.createElement("button");
+            del.textContent = "削除";
+            del.onclick = async () => {
+              try {
+                await removeTodo(t.id);
+                await render();
+              } catch (e) {
+                alert("削除に失敗しました");
+              }
+            };
+
+            li.append(chk, span, del);
+            listEl.appendChild(li);
+          }
+        }
+
+        const submit = async () => {
+          let title = (inputEl.value || "").trim();
+          if (!title) {
+            alert("タイトルを入力してください");
+            return;
+          }
+          if (title.length > 100) {
+            alert("タイトルは100文字以内で入力してください");
+            return;
+          }
+          try {
+            setBusy(true);
+            await addTodo(title);
+            inputEl.value = "";
+            await render();
+            inputEl.focus();
+          } catch (e) {
+            alert(
+              typeof e === "string" ? e : e.message || "追加に失敗しました"
+            );
+          } finally {
+            setBusy(false);
+          }
+        };
+
+        addBtn.addEventListener("click", submit);
+        inputEl.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") submit();
+        });
+
+        render();
+      });
+    </script>
+  </body>
+</html>
